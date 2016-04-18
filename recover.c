@@ -13,19 +13,26 @@ int print_usage(char *argv[]){
 }
 
 int main(int argc, char *argv[]){
-	int ret;
+	int ret = 0, d_num = 0, r_num = 0;
 	while((ret = getopt(argc, argv, "d:ilr:o:x:")) != -1){
 		printf("ret is %d\n", ret);
-		switch(ret){
-			case 'd': puts(optarg); break;
-			case 'i': break;
-			case 'l': break;
-			case 'r':
-			case 'o':
-				break;
-			case 'x': puts(optarg); break;
-			default: print_usage(argv); break;
+		if(d_num == 0){
+			if(ret == 'd'){ puts(optarg); ++d_num;}
+			else{ break; }
+		}
+		else if(d_num == 1){
+			switch(ret){
+				case 'd': puts(optarg); ++d_num; break;
+				case 'i': break;
+				case 'l': break;
+				case 'r':
+				case 'o':	
+					break;
+				case 'x': puts(optarg); break;
+				default: print_usage(argv); break;
+				}
 		}
 	}
+	if(d_num == 0){ print_usage(argv); }
 	return 0;
 }
