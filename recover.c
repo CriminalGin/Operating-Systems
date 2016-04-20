@@ -135,7 +135,7 @@ int read_args(int argc, char *argv[]){
 }
 
 
-int read_info(int argc, char *argv[]){
+int print_info(int argc, char *argv[]){
 	FILE *fp;
 	struct BootEntry boot_entry;
 	if((fp = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }
@@ -149,31 +149,44 @@ int read_info(int argc, char *argv[]){
 	return 0;
 }
 
+int list_directory(int argc, char *argv[]){
+	FILE *fp;
+	struct DirEntry dir_entry;
+	struct BootEntry boot_entry;
+	if((fp = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }
+	fread(&boot_entry, sizeof(struct BootEntry), 1, fp);
+	// printf("%lu\n", be32toh(boot_entry.BPB_FATSz32));
+	// printf("%lu\n", be32toh(boot_entry.BPB_HiddSec));	
+	fseek(fp, (32 + 1009 * 2) * 512, SEEK_SET);
+	fread(&dir_entry, sizeof(struct DirEntry), 1, fp);
+	char name[12];
+	read_name(dir_entry.DIR_Name, name);
+	printf("name is %s\n", name);	
+	fseek(fp, (32 + 1009 * 2) * 512 + sizeof(struct DirEntry), SEEK_SET);
+	fread(&dir_entry, sizeof(struct DirEntry), 1, fp);
+	read_name(dir_entry.DIR_Name, name);
+	printf("name is %s\n", name);
+	return 0;
+}
+
+int read_name(uint8_t *DIR_Name, char *name){
+	int i = 0;
+	int j = 8;
+	while((char)DIR_Name[i] != ' '){name[i] = (char)DIR_Name[i]; ++i;}
+	if((char)DIR_Name[j] == ' '){ }
+	else{
+		name[i++] = '.';
+		while((char)DIR_Name[j] != ' '){name[i] = (char)DIR_Name[j]; ++i; ++j; } 
+	}
+	name[i++] = '\0';
+	return 0;
+}
+
 int main(int argc, char *argv[]){
 	int ret = 0;
 	while(global_args_t_init(global_args) != 0);
 	if(read_args(argc, argv) == -1){print_usage(argv); return -1; }
-	printf("argv[2] = %s\n", argv[2]);
-	if(global_args.i_num == 1){read_info(argc, argv);}
-#if 0
-	while((ret = getopt(argc, argv, opt_strings)) != -1){
-		if(global_args.d_num == 0){
-			if(ret == 'd'){ puts(optarg); ++global_args.d_num;}
-		}
-		else if(global_args.d_num == 1){
-			switch(ret){
-				case 'd': puts(optarg); ++global_args.d_num; break;
-				case 'i': printf("I have gone i\n"); read_info(argc, argv); break;
-				case 'l': printf("l\n"); break;
-				case 'r':
-				case 'o':	
-					break;
-				case 'x': puts(optarg); break;
-				default: break;
-			}
-		}
-		global_args.last_index = optind;
-	}
-#endif
+	if(global_args.i_num == 1){print_info(argc, argv);}
+	else if(global_args.l_num == 1){list_directory(argc, argv);}
 	return 0;
 }
