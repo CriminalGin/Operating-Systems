@@ -4,6 +4,7 @@
 #include <getopt.h>
 #include <stdint.h>
 #include <string.h>
+#include <endian.h>
 
 #define ARGMAXNUM 6
 
@@ -136,20 +137,15 @@ int read_args(int argc, char *argv[]){
 
 int read_info(int argc, char *argv[]){
 	FILE *fp;
-	// unsigned char buf[1000];
 	struct BootEntry boot_entry;
-	int i;
-
-	if((fp = fopen(argv[2], "r")) == NULL){
-		perror(argv[2]);
-		exit(1);
-	}
+	if((fp = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }
 	fread(&boot_entry, sizeof(struct BootEntry), 1, fp);
-	// ptr = (struct BootEntry*)buf;
-	printf("Number of FATs = %u\n", boot_entry.BPB_NumFATs);		
-	printf("Number of bytes per cluster = %u\n", boot_entry.BPB_BytsPerSec);
-	printf("Number of reserved sectors = %u\n", boot_entry.BPB_SecPerClus);
-	printf("Number of reserved sectors = %u\n", boot_entry.BPB_RsvdSecCnt);
+	printf("Number of FATs = %d\n", (boot_entry).BPB_NumFATs);		
+	printf("Number of bytes per sector = %d\n", be16toh ((boot_entry).BPB_BytsPerSec));
+	printf("Number of sectors per cluster = %d\n", (boot_entry).BPB_SecPerClus);
+	printf("Number of reserved sectors = %d\n", be16toh((boot_entry).BPB_RsvdSecCnt));
+	// printf("First FAT starts at byte = %u\n", be16toh((*boot_entry).BPB_BytsPerSec) * be16toh((*boot_entry).BPB_RsvdSecCnt));
+	printf("Data area starts at byte = \n");
 	return 0;
 }
 
@@ -157,6 +153,7 @@ int main(int argc, char *argv[]){
 	int ret = 0;
 	while(global_args_t_init(global_args) != 0);
 	if(read_args(argc, argv) == -1){print_usage(argv); return -1; }
+	printf("argv[2] = %s\n", argv[2]);
 	if(global_args.i_num == 1){read_info(argc, argv);}
 #if 0
 	while((ret = getopt(argc, argv, opt_strings)) != -1){
