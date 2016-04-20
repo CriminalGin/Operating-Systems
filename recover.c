@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <stdint.h>
+#include <string.h>
+
 #define ARGMAXNUM 6
 
 int print_usage(char *argv[]){
@@ -95,10 +97,24 @@ struct DirEntry {
 	uint32_t DIR_FileSize; /* File size in bytes. (0 for directories) */
 };
 
-int read_info(char *argv){
+int read_info(int argc, char *argv[]){
+	printf("I have gone to read_info\n");
+	FILE *fp;
+	unsigned char buf[1000];
+	struct BootEntry *ptr;
+	int i;
+
+	if((fp = fopen(argv[2], "r")) == NULL){
+		perror(argv[2]);
+		exit(1);
+	}
+
+	fread(buf, sizeof(struct BootEntry), 1, fp);
+	ptr = (struct BootEntry*)buf;
+	printf("Number of FATs = %d\n", (*ptr).BPB_NumFATs);
 	return 0;
 }
-
+#if 1
 int check_error(int argc, char *argv[]){
 	int ret = 0;
 	while(global_args_t_init(global_args) != 0);
@@ -126,11 +142,61 @@ int check_error(int argc, char *argv[]){
 	if(global_args.r_num ^ global_args.o_num){free(global_args.args); return 0;}
 	free(global_args.args); return -1;
 }
+#endif
+
+int read_options(int num, char *options, struct global_args_t global_args, char *optarg, int ret){
+	++num; 
+	if(num > 1){free(global_args.args); return -1;}
+	options = (char *)malloc(strlen(optarg) * sizeof(char));
+	strcpy(options, optarg);
+	global_args.args[global_args.args_num++] = ret; 
+	return 0;
+}
+
+int read_args(int argc, char *argv[]){
+	int ret = 0;
+	global_args.args = (char *)malloc(ARGMAXNUM * sizeof(char));
+	while((ret = getopt(argc, argv, opt_strings)) != -1){
+		if(global_args.args_num >= ARGMAXNUM){ free(global_args.args); return -1; }
+		if(global_args.last_index == optind) {free(global_args.args); return -1;}
+		switch(ret){
+			case 'd': if(read_options(global_args.d_num, global_args.d_options, global_args, optarg, ret) == -1) {return -1;} break;
+			case 'i': ++global_args.i_num; global_args.args[global_args.args_num++] = ret; break;
+			case 'l': ++global_args.l_num; global_args.args[global_args.args_num++] = ret; break;
+			case 'r': if(read_options(global_args.r_num, global_args.r_options, global_args, optarg, ret) == -1) {return -1;} break;
+			case 'o': if(read_options(global_args.o_num, global_args.o_options, global_args, optarg, ret) == -1) {return -1;} break;
+			case 'x': if(read_options(global_args.x_num, global_args.x_options, global_args, optarg, ret) == -1) {return -1;} break;
+			default: free(global_args.args); return 0;
+		}
+		global_args.last_index = optind;
+	}
+	if(global_args.args_num == 0 || global_args.args_num > 3){ free(global_args.args); return -1; }
+	if(global_args.d_num == 0){free(global_args.args); return -1;}
+	if((global_args.args_num == 3)){
+		if(!(global_args.r_num & global_args.o_num)){free(global_args.args); return -1;}
+	}
+	if(global_args.d_num > 1 || global_args.i_num > 1 || global_args.l_num > 1 || global_args.r_num > 1 || global_args.o_num > 1 || global_args.x_num > 1) {free(global_args.args); return -1;}
+	if(global_args.r_num ^ global_args.o_num){free(global_args.args); return -1;}
+	return 0;
+}
 
 int main(int argc, char *argv[]){
 	int ret = 0;
+#if 1
+	int argc_check = argc;
+	char *argv_check[11];
+	int i = 0;
+	while(argv[i] != '\0'){
+		argv_check[i] = (char *)malloc(sizeof(char) * strlen(argv[i]));
+		strcpy(argv_check[i], argv[i]);
+		++i;
+	}
+#endif
 	while(global_args_t_init(global_args) != 0);
-	if(check_error(argc, argv) == 0){print_usage(argv); return -1; }
+	// if(check_error(argc_check, argv_check) == 0){print_usage(argv); return -1; }
+	if(read_args(argc, argv) == -1){print_usage(argv); return -1; }
+	
+#if 0
 	while((ret = getopt(argc, argv, opt_strings)) != -1){
 		if(global_args.d_num == 0){
 			if(ret == 'd'){ puts(optarg); ++global_args.d_num;}
@@ -138,7 +204,7 @@ int main(int argc, char *argv[]){
 		else if(global_args.d_num == 1){
 			switch(ret){
 				case 'd': puts(optarg); ++global_args.d_num; break;
-				case 'i': printf("i\n"); break;
+				case 'i': printf("I have gone i\n"); read_info(argc, argv); break;
 				case 'l': printf("l\n"); break;
 				case 'r':
 				case 'o':	
@@ -149,5 +215,6 @@ int main(int argc, char *argv[]){
 		}
 		global_args.last_index = optind;
 	}
+#endif
 	return 0;
 }
