@@ -98,6 +98,8 @@ struct DirEntry {
 	uint32_t DIR_FileSize; /* File size in bytes. (0 for directories) */
 };
 
+
+
 int read_options(int *num, char *options, struct global_args_t *global_args, char *optarg, int ret){
 	++*num; 
 	if(*num > 1){free(global_args->args); return -1;}
@@ -155,24 +157,29 @@ int list_directory(int argc, char *argv[]){
 	struct BootEntry boot_entry;
 	if((fp = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }
 	fread(&boot_entry, sizeof(struct BootEntry), 1, fp);
-	// printf("%lu\n", be32toh(boot_entry.BPB_FATSz32));
-	// printf("%lu\n", be32toh(boot_entry.BPB_HiddSec));	
-	fseek(fp, (32 + 1009 * 2) * 512, SEEK_SET);
-	fread(&dir_entry, sizeof(struct DirEntry), 1, fp);
-	char name[12];
-	read_name(dir_entry.DIR_Name, name);
-	printf("name is %s\n", name);	
-	fseek(fp, (32 + 1009 * 2) * 512 + sizeof(struct DirEntry), SEEK_SET);
-	fread(&dir_entry, sizeof(struct DirEntry), 1, fp);
-	read_name(dir_entry.DIR_Name, name);
-	printf("name is %s\n", name);
+	int order = 1; char name[12]; long unsigned int cluster = 0;
+	while(order < 9){	
+		fseek(fp, (32 + 1009 * 2) * 512 + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
+		fread(&dir_entry, sizeof(struct DirEntry), 1, fp);
+		if((dir_entry.DIR_Attr & 0x00F) == 0x00F){printf("%d, LFN entry\n", order);}
+		else{
+			read_name(dir_entry.DIR_Name, name);
+			cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
+			printf("%d, %s, %lu, %ld\n", order, name, dir_entry.DIR_FileSize, cluster);
+		}
+		++order;	
+	}
 	return 0;
 }
 
 int read_name(uint8_t *DIR_Name, char *name){
 	int i = 0;
 	int j = 8;
-	while((char)DIR_Name[i] != ' '){name[i] = (char)DIR_Name[i]; ++i;}
+	while((char)DIR_Name[i] != ' '){
+		if(i == 0 && DIR_Name[i] == 0xE5){name[i] = '?';}
+		else{name[i] = (char)DIR_Name[i];}
+		 ++i;
+	}
 	if((char)DIR_Name[j] == ' '){ }
 	else{
 		name[i++] = '.';
