@@ -221,7 +221,7 @@ int recover_file(int argc, char *argv[]){
 	while(1){	
 		fseek(input, data_start + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
 		fread(&dir_entry, sizeof(struct DirEntry), 1, input);
-		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){printf("[%s]: error - file not found\n", argv[4]); return -1;}
+		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){printf("%s: error - file not found\n", argv[4]); return -1;}
 		name_to_NAME(NAME, argv[4]);
 		if(dir_entry.DIR_Name[0] == 0xE5){
 			for(i = 1; i < 11; ++i){
@@ -233,16 +233,27 @@ int recover_file(int argc, char *argv[]){
 	}
 	cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
 	fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2), SEEK_SET);
-	char content; int position = 0; FILE *output; 
+	char *content = (char *)malloc(sizeof(char) * dir_entry.DIR_FileSize); 
+	int position = 0; FILE *output; 
 	if( (output = fopen(argv[6], "w+")) == NULL){printf("%s: failed to open\n", argv[4]); return -1;}
+#if 0
 	for(position = 0; position < dir_entry.DIR_FileSize; ++position){
 		fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2) + position, SEEK_SET);
 		fread(&content, sizeof(char), 1, input);
-		printf("%c", content);
 		fseek(output, position, SEEK_SET);
 		fwrite(&content, sizeof(char), 1, output);
 	}
+#endif
+	fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2), SEEK_SET);
+	fread(content, sizeof(char), dir_entry.DIR_FileSize, input);
+	fwrite(content, sizeof(char), dir_entry.DIR_FileSize, output);
+	printf("%s: recovered\n", argv[4]);
 	fclose(output); fclose(input);	
+	return 0;
+}
+
+int cleanse_file(){
+		
 	return 0;
 }
 
