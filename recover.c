@@ -7,6 +7,7 @@
 #include <endian.h>
 
 #define ARGMAXNUM 6
+#define CLUSTERSIZE 512 // should be replaced by data from fread
 
 int print_usage(char *argv[]){
 	printf("Usage: %s -d [device filename] [other arguments]\n", argv[0]);
@@ -52,7 +53,8 @@ int global_args_t_init(struct global_args_t global_args){
 	return 0;
 }
 
-struct BootEntry {
+#pragma pack(push, 1)
+struct BootEntry{
 	uint8_t BS_jmpBoot[3]; /* Assembly instruction to jump to boot code */
 	uint8_t BS_OEMName[8]; /* OEM Name in ASCII */
 	uint16_t BPB_BytsPerSec; /* Bytes per sector. Allowed values include 512, 1024, 2048, and 4096 */
@@ -82,8 +84,10 @@ found */
 	uint8_t BS_VolLab[11]; /* Volume label in ASCII. User defines when creating the file system */
 	uint8_t BS_FilSysType[8]; /* File system type label in ASCII */
 };
+#pragma pack(pop)
 
-struct DirEntry {
+#pragma pack(push, 1)
+struct DirEntry{
 	uint8_t DIR_Name[11]; /* File name */
 	uint8_t DIR_Attr; /* File attributes */
 	uint8_t DIR_NTRes; /* Reserved */
@@ -97,8 +101,7 @@ struct DirEntry {
 	uint16_t DIR_FstClusLO; /* Low 2 bytes of the first cluster address */
 	uint32_t DIR_FileSize; /* File size in bytes. (0 for directories) */
 };
-
-
+#pragma pack(pop)
 
 int read_options(int *num, char *options, struct global_args_t *global_args, char *optarg, int ret){
 	++*num; 
@@ -126,7 +129,7 @@ int read_args(int argc, char *argv[]){
 		}
 		global_args.last_index = optind;
 	}
-	if(global_args.args_num == 0 || global_args.args_num > 3){ free(global_args.args); return -1; }
+	if(global_args.args_num <= 1 || global_args.args_num > 3){ free(global_args.args); return -1; }
 	if(global_args.d_num == 0){free(global_args.args); return -1;}
 	if((global_args.args_num == 3)){
 		if(!(global_args.r_num & global_args.o_num)){free(global_args.args); printf("before return -1\n"); return -1;}
@@ -136,51 +139,50 @@ int read_args(int argc, char *argv[]){
 	return 0;
 }
 
-
 int print_info(int argc, char *argv[]){
 	FILE *fp;
 	struct BootEntry boot_entry;
 	if((fp = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }
 	fread(&boot_entry, sizeof(struct BootEntry), 1, fp);
 	printf("Number of FATs = %d\n", (boot_entry).BPB_NumFATs);		
-	printf("Number of bytes per sector = %d\n", be16toh ((boot_entry).BPB_BytsPerSec));
+	printf("Number of bytes per sector = %d\n", ((boot_entry).BPB_BytsPerSec));
 	printf("Number of sectors per cluster = %d\n", (boot_entry).BPB_SecPerClus);
-	printf("Number of reserved sectors = %d\n", be16toh((boot_entry).BPB_RsvdSecCnt));
-	// printf("First FAT starts at byte = %u\n", be16toh((*boot_entry).BPB_BytsPerSec) * be16toh((*boot_entry).BPB_RsvdSecCnt));
-	printf("Data area starts at byte = \n");
+	printf("Number of reserved sectors = %d\n", ((boot_entry).BPB_RsvdSecCnt));
+	int fat1_start = boot_entry.BPB_BytsPerSec * boot_entry.BPB_RsvdSecCnt;
+	printf("First FAT starts at byte = %d\n", fat1_start);
+	long unsigned int data_start = (boot_entry.BPB_RsvdSecCnt + boot_entry.BPB_NumFATs * boot_entry.BPB_FATSz32) * boot_entry.BPB_BytsPerSec;
+	printf("Data area starts at byte = %lu\n", data_start);
+	fclose(fp);
 	return 0;
 }
 
 int list_directory(int argc, char *argv[]){
 	FILE *fp;
-	struct DirEntry dir_entry;
-	struct BootEntry boot_entry;
+	struct DirEntry dir_entry; struct BootEntry boot_entry;
 	if((fp = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }
 	fread(&boot_entry, sizeof(struct BootEntry), 1, fp);
+	long unsigned int data_start = (boot_entry.BPB_RsvdSecCnt + boot_entry.BPB_NumFATs * boot_entry.BPB_FATSz32) * boot_entry.BPB_BytsPerSec;
 	int order = 1; char name[12]; long unsigned int cluster = 0;
-	int dir_flag = 0;
+int dir_flag = 0;
 	while(1){	
-		fseek(fp, (32 + 1009 * 2) * 512 + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
+		fseek(fp, data_start + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
 		fread(&dir_entry, sizeof(struct DirEntry), 1, fp);
-		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){break;}
-		// int i = 0;
-		// for(i = 0; i < 11; ++i){printf("%c", (char)dir_entry.DIR_Name[i]);}printf("\n");
+		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){ break; }
 		if((dir_entry.DIR_Attr & 0x00F) == 0x00F){printf("%d, LFN entry\n", order);}
 		else{
 			if((dir_entry.DIR_Attr & 0x010) == 0x010){dir_flag = 1;}
-			read_name(dir_entry.DIR_Name, name, dir_flag);
+			NAME_to_name(dir_entry.DIR_Name, name, dir_flag);
 			cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
 			printf("%d, %s, %lu, %ld\n", order, name, dir_entry.DIR_FileSize, cluster);
 		}
-		
 		++order;	
 	}
+	fclose(fp);
 	return 0;
 }
 
-int read_name(uint8_t *DIR_Name, char *name, int dir_flag){
-	int i = 0;
-	int j = 8;
+int NAME_to_name(uint8_t *DIR_Name, char *name, int dir_flag){
+	int i = 0, j = 8;
 	while((char)DIR_Name[i] != ' '){
 		if(i == 0 && DIR_Name[i] == 0xE5){name[i] = '?';}
 		else{name[i] = (char)DIR_Name[i];}
@@ -196,11 +198,59 @@ int read_name(uint8_t *DIR_Name, char *name, int dir_flag){
 	return 0;
 }
 
+/* no directory*/
+int name_to_NAME(int *NAME, char *name){
+	int name_idx = 0, NAME_IDX = 0;
+	int i = 0;	
+	for(i = 0; i < 11; ++i){NAME[i] = 0x20;}
+	for(name_idx = 0; name_idx < strlen(name); ++name_idx){
+		if(name[name_idx] == '.'){NAME_IDX = 8; ++name_idx;}
+		NAME[NAME_IDX] = (int)name[name_idx];
+		++NAME_IDX; 	
+	}
+	return 0;
+}
+
+int recover_file(int argc, char *argv[]){
+	FILE *input;
+	if((input = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }	
+	long unsigned int cluster = 0; int order = 1; int NAME[11]; int i = 0;
+	struct DirEntry dir_entry; struct BootEntry boot_entry;
+	fread(&boot_entry, sizeof(struct BootEntry), 1, input);
+	long unsigned int data_start = (boot_entry.BPB_RsvdSecCnt + boot_entry.BPB_NumFATs * boot_entry.BPB_FATSz32) * boot_entry.BPB_BytsPerSec;
+	while(1){	
+		fseek(input, data_start + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
+		fread(&dir_entry, sizeof(struct DirEntry), 1, input);
+		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){printf("[%s]: error - file not found\n", argv[4]); return -1;}
+		name_to_NAME(NAME, argv[4]);
+		if(dir_entry.DIR_Name[0] == 0xE5){
+			for(i = 1; i < 11; ++i){
+				if(NAME[i] != dir_entry.DIR_Name[i]){break;}			
+			}
+		}
+		if(i == 11){ break; }	
+		++order;	 	
+	}
+	cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
+	fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2), SEEK_SET);
+	char content; int position = 0; FILE *output; 
+	if( (output = fopen(argv[6], "w+")) == NULL){printf("%s: failed to open\n", argv[4]); return -1;}
+	for(position = 0; position < dir_entry.DIR_FileSize; ++position){
+		fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2) + position, SEEK_SET);
+		fread(&content, sizeof(char), 1, input);
+		printf("%c", content);
+		fseek(output, position, SEEK_SET);
+		fwrite(&content, sizeof(char), 1, output);
+	}
+	fclose(output); fclose(input);	
+	return 0;
+}
+
 int main(int argc, char *argv[]){
-	int ret = 0;
 	while(global_args_t_init(global_args) != 0);
 	if(read_args(argc, argv) == -1){print_usage(argv); return -1; }
 	if(global_args.i_num == 1){print_info(argc, argv);}
 	else if(global_args.l_num == 1){list_directory(argc, argv);}
+	else if(global_args.r_num == 1 && global_args.o_num == 1){recover_file(argc, argv);}
 	return 0;
 }
