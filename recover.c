@@ -158,21 +158,27 @@ int list_directory(int argc, char *argv[]){
 	if((fp = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }
 	fread(&boot_entry, sizeof(struct BootEntry), 1, fp);
 	int order = 1; char name[12]; long unsigned int cluster = 0;
-	while(order < 9){	
+	int dir_flag = 0;
+	while(1){	
 		fseek(fp, (32 + 1009 * 2) * 512 + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
 		fread(&dir_entry, sizeof(struct DirEntry), 1, fp);
+		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){break;}
+		// int i = 0;
+		// for(i = 0; i < 11; ++i){printf("%c", (char)dir_entry.DIR_Name[i]);}printf("\n");
 		if((dir_entry.DIR_Attr & 0x00F) == 0x00F){printf("%d, LFN entry\n", order);}
 		else{
-			read_name(dir_entry.DIR_Name, name);
+			if((dir_entry.DIR_Attr & 0x010) == 0x010){dir_flag = 1;}
+			read_name(dir_entry.DIR_Name, name, dir_flag);
 			cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
 			printf("%d, %s, %lu, %ld\n", order, name, dir_entry.DIR_FileSize, cluster);
 		}
+		
 		++order;	
 	}
 	return 0;
 }
 
-int read_name(uint8_t *DIR_Name, char *name){
+int read_name(uint8_t *DIR_Name, char *name, int dir_flag){
 	int i = 0;
 	int j = 8;
 	while((char)DIR_Name[i] != ' '){
@@ -185,6 +191,7 @@ int read_name(uint8_t *DIR_Name, char *name){
 		name[i++] = '.';
 		while((char)DIR_Name[j] != ' '){name[i] = (char)DIR_Name[j]; ++i; ++j; } 
 	}
+	if(dir_flag == 1){name[i++] = '/';}
 	name[i++] = '\0';
 	return 0;
 }
