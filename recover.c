@@ -221,7 +221,7 @@ int recover_file(int argc, char *argv[]){
 	while(1){	
 		fseek(input, data_start + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
 		fread(&dir_entry, sizeof(struct DirEntry), 1, input);
-		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){printf("%s: error - file not found\n", argv[4]); return -1;}
+		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){printf("%s: error - file not found\n", argv[4]); fclose(input); return -1;}
 		name_to_NAME(NAME, argv[4]);
 		if(dir_entry.DIR_Name[0] == 0xE5){
 			for(i = 1; i < 11; ++i){
@@ -248,12 +248,45 @@ int recover_file(int argc, char *argv[]){
 	fread(content, sizeof(char), dir_entry.DIR_FileSize, input);
 	fwrite(content, sizeof(char), dir_entry.DIR_FileSize, output);
 	printf("%s: recovered\n", argv[4]);
-	fclose(output); fclose(input);	
+	free(content); fclose(output); fclose(input);	
 	return 0;
 }
 
-int cleanse_file(){
-		
+int cleanse_file(int argc, char *argv[]){
+	FILE *input;
+	if((input = fopen(argv[2], "r+")) == NULL){ perror(argv[2]); exit(1); }	
+	long unsigned int cluster = 0; int order = 1; int NAME[11]; int i = 0;	
+	struct DirEntry dir_entry; struct BootEntry boot_entry;
+	fread(&boot_entry, sizeof(struct BootEntry), 1, input);
+	long unsigned int data_start = (boot_entry.BPB_RsvdSecCnt + boot_entry.BPB_NumFATs * boot_entry.BPB_FATSz32) * boot_entry.BPB_BytsPerSec;
+	while(1){	
+		fseek(input, data_start + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
+		fread(&dir_entry, sizeof(struct DirEntry), 1, input);
+		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){printf("%s: error - file not found\n", argv[4]); fclose(input); return -1;}
+		name_to_NAME(NAME, argv[4]);
+		if(dir_entry.DIR_Name[0] == 0xE5){
+			for(i = 1; i < 11; ++i){
+				if(NAME[i] != dir_entry.DIR_Name[i]){break;}			
+			}
+		}
+		if(i == 11){ break; }	
+		++order;	 	
+	}
+	if(dir_entry.DIR_FileSize == 0){printf("%s: error - fail to cleanse\n", argv[4]); fclose(input); return -1;}	
+	cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
+#if 0
+	char zero = 0;
+	for(i = 0; i < dir_entry.DIR_FileSize;){	
+		fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2) + i, SEEK_SET);
+		fwrite(zero, sizeof(char), 1, input);	
+		i = i + sizeof(char);
+	}
+#endif
+	char *zeros = (char *)malloc(sizeof(char) * dir_entry.DIR_FileSize);
+	memset(zeros, 0, dir_entry.DIR_FileSize);
+	fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2), SEEK_SET);
+	fwrite(zeros, dir_entry.DIR_FileSize, 1, input);
+	printf("%s: cleansed\n", argv[4]);	
 	return 0;
 }
 
@@ -263,5 +296,6 @@ int main(int argc, char *argv[]){
 	if(global_args.i_num == 1){print_info(argc, argv);}
 	else if(global_args.l_num == 1){list_directory(argc, argv);}
 	else if(global_args.r_num == 1 && global_args.o_num == 1){recover_file(argc, argv);}
+	else if(global_args.x_num == 1){cleanse_file(argc, argv);}
 	return 0;
 }
