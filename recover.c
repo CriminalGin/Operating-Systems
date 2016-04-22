@@ -163,13 +163,14 @@ int list_directory(int argc, char *argv[]){
 	fread(&boot_entry, sizeof(struct BootEntry), 1, fp);
 	long unsigned int data_start = (boot_entry.BPB_RsvdSecCnt + boot_entry.BPB_NumFATs * boot_entry.BPB_FATSz32) * boot_entry.BPB_BytsPerSec;
 	int order = 1; char name[12]; long unsigned int cluster = 0;
-int dir_flag = 0;
-	while(1){	
+	while(1){
+		int dir_flag = 0;	
 		fseek(fp, data_start + sizeof(struct DirEntry) * (order - 1), SEEK_SET);
 		fread(&dir_entry, sizeof(struct DirEntry), 1, fp);
 		if(dir_entry.DIR_Name[0] == 0 && dir_entry.DIR_Name[1] == 0 && dir_entry.DIR_Name[2] == 0 && dir_entry.DIR_Name[3] == 0 && dir_entry.DIR_Name[4] == 0 && dir_entry.DIR_Name[5] == 0 && dir_entry.DIR_Name[6] == 0 && dir_entry.DIR_Name[7] == 0 && dir_entry.DIR_Name[8] == 0 && dir_entry.DIR_Name[9] == 0 && dir_entry.DIR_Name[10] == 0){ break; }
 		if((dir_entry.DIR_Attr & 0x00F) == 0x00F){printf("%d, LFN entry\n", order);}
 		else{
+			
 			if((dir_entry.DIR_Attr & 0x010) == 0x010){dir_flag = 1;}
 			NAME_to_name(dir_entry.DIR_Name, name, dir_flag);
 			cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
@@ -183,7 +184,7 @@ int dir_flag = 0;
 
 int NAME_to_name(uint8_t *DIR_Name, char *name, int dir_flag){
 	int i = 0, j = 8;
-	while((char)DIR_Name[i] != ' '){
+	while((char)DIR_Name[i] != ' ' && i < 8){
 		if(i == 0 && DIR_Name[i] == 0xE5){name[i] = '?';}
 		else{name[i] = (char)DIR_Name[i];}
 		 ++i;
@@ -211,6 +212,26 @@ int name_to_NAME(int *NAME, char *name){
 	return 0;
 }
 
+int check_occupy(int argc, char *argv[], long unsigned int cluster){
+	FILE *input;
+	if((input = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }
+	struct DirEntry dir_entry; struct BootEntry boot_entry;
+	fread(&boot_entry, sizeof(struct BootEntry), 1, input);
+	int **FAT_entry = (int**)malloc(boot_entry.BPB_FATSz32 * sizeof(int *));
+	int i = 0;
+	for(i = 0; i < boot_entry.BPB_FATSz32; ++i){FAT_entry[i] = (int *)malloc(boot_entry.BPB_BytsPerSec);}
+	fseek(input, boot_entry.BPB_RsvdSecCnt * boot_entry.BPB_BytsPerSec, SEEK_SET);
+#if 1
+	for(i = 0; i < boot_entry.BPB_FATSz32; ++i){
+		fseek(input, (boot_entry.BPB_RsvdSecCnt + i) * boot_entry.BPB_BytsPerSec, SEEK_SET);	
+		fread(FAT_entry[i], boot_entry.BPB_BytsPerSec, 1, input);
+	}
+#endif
+	fclose(input);
+	if(FAT_entry[0][cluster] != 0){return 1;}
+	else{return 0;}
+}
+
 int recover_file(int argc, char *argv[]){
 	FILE *input;
 	if((input = fopen(argv[2], "rb")) == NULL){ perror(argv[2]); exit(1); }	
@@ -232,18 +253,11 @@ int recover_file(int argc, char *argv[]){
 		++order;	 	
 	}
 	cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
+	if(check_occupy(argc, argv, cluster)){printf("%s: error - fail to recover\n", argv[4]); return -1;};
 	fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2), SEEK_SET);
 	char *content = (char *)malloc(sizeof(char) * dir_entry.DIR_FileSize); 
 	int position = 0; FILE *output; 
-	if( (output = fopen(argv[6], "w+")) == NULL){printf("%s: failed to open\n", argv[4]); return -1;}
-#if 0
-	for(position = 0; position < dir_entry.DIR_FileSize; ++position){
-		fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2) + position, SEEK_SET);
-		fread(&content, sizeof(char), 1, input);
-		fseek(output, position, SEEK_SET);
-		fwrite(&content, sizeof(char), 1, output);
-	}
-#endif
+	if( (output = fopen(argv[6], "w+")) == NULL){printf("%s: failed to open\n", argv[4]); free(content); fclose(output); fclose(input);return -1;}
 	fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2), SEEK_SET);
 	fread(content, sizeof(char), dir_entry.DIR_FileSize, input);
 	fwrite(content, sizeof(char), dir_entry.DIR_FileSize, output);
@@ -274,14 +288,7 @@ int cleanse_file(int argc, char *argv[]){
 	}
 	if(dir_entry.DIR_FileSize == 0){printf("%s: error - fail to cleanse\n", argv[4]); fclose(input); return -1;}	
 	cluster = dir_entry.DIR_FstClusLO + dir_entry.DIR_FstClusHI * 0x10000;
-#if 0
-	char zero = 0;
-	for(i = 0; i < dir_entry.DIR_FileSize;){	
-		fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2) + i, SEEK_SET);
-		fwrite(zero, sizeof(char), 1, input);	
-		i = i + sizeof(char);
-	}
-#endif
+	if(check_occupy(argc, argv, cluster)){printf("%s: error - fail to cleanse\n", argv[4]); fclose(input); return -1;};
 	char *zeros = (char *)malloc(sizeof(char) * dir_entry.DIR_FileSize);
 	memset(zeros, 0, dir_entry.DIR_FileSize);
 	fseek(input, data_start + boot_entry.BPB_BytsPerSec * boot_entry.BPB_SecPerClus * (cluster - 2), SEEK_SET);
